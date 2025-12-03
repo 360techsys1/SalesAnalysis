@@ -8,6 +8,18 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
+// Root route
+app.get('/', (_req, res) => {
+  res.json({ 
+    status: 'ok', 
+    message: 'Sales Analysis Backend API',
+    endpoints: {
+      health: '/health',
+      chat: '/api/chat'
+    }
+  });
+});
+
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
