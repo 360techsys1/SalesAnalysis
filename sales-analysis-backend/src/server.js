@@ -14,10 +14,15 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/chat', chatRouter);
 
-const PORT = process.env.PORT || 4000;
+// Export for Vercel serverless functions
+export default app;
 
-app.listen(PORT, () => {
-  console.log(`Sales analysis backend listening on http://localhost:${PORT}`);
-});
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 4000;
+  app.listen(PORT, () => {
+    console.log(`Sales analysis backend listening on http://localhost:${PORT}`);
+  });
+}
 
 
