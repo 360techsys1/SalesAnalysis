@@ -36,7 +36,16 @@ chatRouter.post('/', async (req, res) => {
     });
   } catch (err) {
     console.error('Chat endpoint error:', err);
-    res.status(500).json({ error: 'Internal server error', details: err.message });
+    console.error('Error stack:', err.stack);
+    // Return more detailed error in development, but keep it safe for production
+    const errorMessage = process.env.NODE_ENV === 'production' 
+      ? 'Internal server error' 
+      : err.message || 'Internal server error';
+    res.status(500).json({ 
+      error: errorMessage,
+      details: err.message,
+      type: err.constructor.name
+    });
   }
 });
 
