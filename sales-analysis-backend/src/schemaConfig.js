@@ -215,6 +215,21 @@ RELATIONSHIPS (SIMPLIFIED)
 
 - tbl_status.Tab_Id → tbl_Status_Tab_Master.Id
 
+========================
+NAME MATCHING GUIDELINES
+========================
+When the user writes names for stores, branches, couriers, or cities in natural language
+(e.g. "Sunset store", "Sun&Sands", "Trend arabia"), you should:
+- Interpret the core name (e.g. "Sunset", "Sun & Sands", "Trend Arabia").
+- In SQL filters, prefer case-insensitive LIKE with wildcards, e.g.:
+    WHERE s.Name LIKE '%Sunset%'
+    WHERE s.Name LIKE '%Trend Arabia%'
+This avoids missing data due to small spelling differences.
+
+You may combine these tables and views in any valid way consistent with the relationships above
+to answer analysis questions (including complex ones like basket analysis, courier performance,
+branch profitability, inventory reconciliation, linear regression, forecasting, customer segmentation, correlation analysis, regression analysis, clustering analysis, anomaly detection, time series analysis, sentiment analysis, topic modeling, text classification, logistic regression, decision tree, random forest, gradient boosting, XGBoost, LightGBM, CatBoost etc.).
+
 You may combine these tables and views in any valid way consistent with the relationships above
 to answer analysis questions (including complex ones like basket analysis, courier performance,
 branch profitability, inventory reconciliation, linear regression, forecasting, customer segmentation, correlation analysis, regression analysis, clustering analysis, anomaly detection, time series analysis, sentiment analysis, topic modeling, text classification, logistic regression, decision tree, random forest, gradient boosting, XGBoost, LightGBM, CatBoost etc.).
