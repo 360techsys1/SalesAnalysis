@@ -38,7 +38,13 @@ export async function callOpenAI(messages, options = {}) {
     throw new Error(json.error?.message || 'OpenAI API request failed');
   }
 
-  return json.choices[0].message.content;
+  const choice = json.choices[0];
+  // Optional: helpful debug logging
+  if (json.usage || choice.finish_reason) {
+    console.log('LLM finish_reason:', choice.finish_reason, 'usage:', json.usage);
+  }
+
+  return choice.message.content;
 }
 
 /**
@@ -64,7 +70,7 @@ Your responsibilities:
 
 You have FULL access to ALL tables and views defined in the schema below.
 You are NOT restricted to any specific table or view; dynamically choose what is most appropriate
-based on the user's question (including advanced analysis like basket analysis, cohort analysis, etc.).
+based on the user's question (including advanced analysis like basket analysis, cohort analysis, forecasting, etc.).
 
 ======================
 MODES (YOU MUST ALWAYS CHOOSE ONE)
@@ -87,16 +93,38 @@ Rules:
 - mode = "clarify":
     Use this when:
       • The user wants data/analysis but their request is ambiguous or missing key details
-        (e.g. missing time range, store, branch, city, status filters, etc.)
+        (e.g. missing time range, store, branch, city, status filters, etc.).
     - "sql" MUST be null.
     - "message" MUST be a brief clarification question for the user.
 
 - mode = "sql":
     Use this when:
       • The request is clear enough to run a query on the database
-        (e.g. sales by branch, basket analysis for last 3 months, COD performance by courier, etc.).
+        (e.g. sales by branch, basket analysis, COD performance by courier, forecasting based on last 12 months, etc.).
     - "sql" MUST contain ONE safe SQL Server query (SELECT or WITH + SELECT).
     - "message" can be a short human-readable description OR null.
+
+======================
+FORECASTING / PREDICTION REQUESTS
+======================
+When the user asks to FORECAST or PREDICT future metrics based on past data, for example:
+- "Based on last 12 months sales of Trend Arabia predict next 12 months"
+- "Forecast next quarter's orders using the last year"
+
+you MUST:
+
+1) Choose **mode = "sql"** (NOT "chat" and NOT "clarify", unless the request is genuinely ambiguous).
+2) Generate SQL that returns the necessary HISTORICAL data ONLY, such as:
+   - Monthly total sales (SUM of COD_Amount) for the last N months.
+   - And/or monthly order counts.
+3) Do NOT say that "SQL cannot predict". Forecasting will be done in a later step using the rows returned by this query.
+4) If the user does not specify whether they care about order count or amount, return BOTH aggregated by month.
+
+Example pattern (you do NOT need to follow this exact text, adapt it to the question):
+
+- Group by year-month of Order_Date.
+- Filter to the requested store (e.g. Trend Arabia via tbl_store.Name), and last N months.
+- Return columns like: Month, TotalSales, OrderCount.
 
 ======================
 SQL SAFETY RULES (WHEN mode = "sql")
@@ -117,13 +145,6 @@ SCHEMA USAGE RULES
 - You may use ANY table or view from the schema; do NOT assume preference for any single view.
 - Use multiple tables with correct joins if required (e.g. basket analysis requires order header + line items + products).
 - Respect all relationships explicitly defined in the schemaDescription.
-- If needed, combine:
-    • tbl_OrderMasterHeader (orders)
-    • tbl_OrderMasterLineItem (line items)
-    • tbl_Product_Master (product info)
-    • OrderReportCache / AllOrderReport (denormalized order reporting)
-    • Inventory-related tables for stock analysis
-  or any others as suitable.
 
 ======================
 OUTPUT FORMAT (VERY IMPORTANT)
@@ -206,27 +227,42 @@ export function isSqlSafe(sqlText) {
 }
 
 /**
- * Turn SQL result rows into a business explanation.
+ * Turn SQL result rows into a business explanation (including forecasts).
  */
 export async function answerFromData(question, rows, meta = {}) {
   const system = `
-You are a senior enterprise analytics expert for a major ecommerce and fulfillment company in Karachi.
+You are a senior enterprise analytics expert for a major ecommerce and fulfillment company in KSA (Saudi Arabia).
 
 You ALWAYS follow these strict rules:
 
-1. You NEVER invent or guess numbers — all values must come ONLY from "rows" (the JSON data provided).
-2. If something cannot be computed from the data, explicitly say so.
-3. If the dataset is empty, say that clearly and suggest what additional data, filters, or time range would help.
-4. Provide clear, structured business insights for sales, operations, inventory, or courier performance:
+1. You do NOT invent arbitrary numbers. All numeric values must come either:
+   - directly from "rows" (the JSON data provided), OR
+   - from clear calculations based on those rows (sums, averages, growth rates, forecasts, etc.).
+
+2. FORECASTING / PREDICTION:
+   - When the user asks to PREDICT or FORECAST future metrics (e.g., "predict next 12 months based on last 12 months"),
+     you ARE allowed to produce forecasted numbers.
+   - These forecasts MUST be derived from the historical data in "rows" using simple, transparent methods such as:
+       • average of last N periods,
+       • year-over-year growth rate,
+       • simple linear trend over time.
+   - Always explain briefly which method you used.
+   - Clearly label results as "estimates" or "projections", not guarantees.
+
+3. If something truly cannot be computed from the data, explicitly say so.
+
+4. If the dataset is empty, say that clearly and suggest what additional data, filters, or time range would help.
+
+5. Provide clear, structured business insights for sales, operations, inventory, or courier performance:
    - totals, averages, counts
    - trends or comparisons
    - top/bottom performers
    - operational risks, bottlenecks, or anomalies
    - actionable recommendations when relevant
-5. Never mention internal errors, SQL, or database internals to the user.
-6. Never hallucinate or speculate data you do not have.
 
-Your tone: concise, professional, and easy to understand.
+6. Never mention internal errors, SQL text, or database internals to the user.
+
+7. Your tone is concise, professional, and easy to understand.
 `.trim();
 
   const messages = [
@@ -241,19 +277,16 @@ Your tone: concise, professional, and easy to understand.
     }
   ];
 
-  return callOpenAI(messages, { temperature: 0.6, max_tokens: 800 });
+  // Give a bit more room for forecasts & explanations
+  return callOpenAI(messages, { temperature: 0.5, max_tokens: 1200 });
 }
 
 /**
  * Generic fallback / small-talk chat responder.
- * Used when:
- * - input is not suitable for SQL
- * - an internal error occurs
- * - we need a graceful, non-technical reply
  */
 export async function generalChatResponse(question, history = []) {
   const system = `
-You are a friendly, helpful AI assistant for an ecommerce company in Karachi.
+You are a friendly, helpful AI assistant for an ecommerce company in KSA (Saudi Arabia).
 You can:
 - Chat normally (greetings, small talk, gibberish).
 - Answer conceptual questions about ecommerce, logistics, and analytics.

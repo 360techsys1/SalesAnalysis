@@ -20,9 +20,9 @@ Core domains:
 1. Orders & statuses
 2. Products & pricing
 3. Inventory & stock movement
-4. Stores & platforms (e.g. Shopify)
+4. Stores & platforms (e.g. Shopify, Youcan)
 5. Locations (branches, cities, areas)
-6. Couriers, delivery charges, and status mappings
+6. Couriers, delivery charges, POS charges, Return charges, and status mappings
 7. Workflow & employee actions
 8. Reporting views (for ready-made analysis)
 
@@ -157,13 +157,13 @@ REFERENCE / MASTER DATA:
     - CODCash, CODPrepaid, TaxOnCharge
 
 - tbl_Status:
-  - Status master (e.g. Delivered, Returned, In Transit).
+  - Status master (e.g. Return To Jeddah Warehouse, ReturnShipping, CancelAssignPickup, Duplication etc).
   - Fields:
     - Id, Name, Active, CreatedBy (FK to tbl_Employee.Id), RoleId (FK to AspNetRoles.Id)
     - Color, Tab_Id (FK to tbl_Status_Tab_Master.Id)
 
 - tbl_Status_Tab_Master:
-  - Groups statuses by tab, e.g. New Orders, In Transit, Delivered, etc.
+  - Groups statuses by tab, e.g. Uploaded, Out For Delivery, Delivered, In Transit, Returned, Confirmed Order, RTO Received, Failed Delivery, Unconfirmed Order, Canceled, ALREADY_ACCEPTED etc.
 
 - tbl_Country, tbl_Currency:
   - Country and currency reference.
@@ -213,7 +213,9 @@ RELATIONSHIPS (SIMPLIFIED)
 - tbl_store.City_Id → tbl_City.Id
 - tbl_store.Platform_Id → tbl_Platform.Id
 
+- tbl_status.Tab_Id → tbl_Status_Tab_Master.Id
+
 You may combine these tables and views in any valid way consistent with the relationships above
 to answer analysis questions (including complex ones like basket analysis, courier performance,
-branch profitability, inventory reconciliation, etc.).
+branch profitability, inventory reconciliation, linear regression, forecasting, customer segmentation, correlation analysis, regression analysis, clustering analysis, anomaly detection, time series analysis, sentiment analysis, topic modeling, text classification, logistic regression, decision tree, random forest, gradient boosting, XGBoost, LightGBM, CatBoost etc.).
 `;
