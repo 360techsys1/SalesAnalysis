@@ -13,63 +13,62 @@ export const chatRouter = express.Router();
 chatRouter.post('/', async (req, res) => {
   const { question, history } = req.body || {};
 
-  // Never hard-error to user: gracefully handle missing question
   if (!question || typeof question !== 'string') {
-    const answer =
-      'Please provide your question as text, for example: "Show me total COD sales for last month" or "Hi".';
-    return res.json({
-      answer,
-      rowCount: 0,
-      mode: 'invalid_input'
-    });
+    return res.status(400).json({ error: 'question is required' });
   }
 
   try {
-    // 1) Decide mode: chat / clarify / sql
+    // 1) Ask LLM how to handle this message
     const plan = await generateSqlFromQuestion(question, history);
-    console.log('Router plan:', plan);
 
-    // 2) Handle non-SQL modes directly
+    console.log('Router plan:', JSON.stringify(plan, null, 2));
+
+    // 2) Pure chat / clarification path (no SQL)
     if (plan.mode === 'chat' || plan.mode === 'clarify') {
+      const answer =
+        plan.message ||
+        "I'm here to help with your ecommerce, logistics, and inventory questions.";
+
       return res.json({
-        answer: plan.message || 'I am here to help with your ecommerce analytics questions.',
-        rowCount: null,
+        answer,
+        rowCount: 0,
         mode: plan.mode
       });
     }
 
-    // 3) SQL mode: validate and execute
-    const sqlText = (plan.sql || '').trim();
-
+    // 3) SQL path
+    let sqlText = (plan.sql || '').trim();
     if (!sqlText) {
-      console.warn('Empty SQL generated for SQL mode. Falling back to chat.');
-      const fallbackAnswer = await generalChatResponse(question, history);
+      console.warn('LLM returned mode=sql but empty SQL, falling back to chat.');
+      const fallback = await generalChatResponse(question, history);
       return res.json({
-        answer: fallbackAnswer,
+        answer: fallback,
         rowCount: 0,
-        mode: 'fallback'
+        mode: 'chat'
       });
     }
 
     if (!isSqlSafe(sqlText)) {
       console.warn('Blocked unsafe SQL from LLM:', sqlText);
-      const fallbackAnswer =
-        (plan.message &&
-          `${plan.message}\n\nHowever, the generated SQL looked unsafe. Please rephrase or narrow your question.`) ||
-        'I could not safely generate a query for that. Please try rephrasing or narrowing your request (e.g., specify a time range, branch, or store).';
-
+      const fallback = await generalChatResponse(
+        `User asked: "${question}". 
+Internal safety checks blocked the generated SQL. 
+Ignore any database details and instead give a high-level, helpful explanation or suggestions.`,
+        history
+      );
       return res.json({
-        answer: fallbackAnswer,
+        answer: fallback,
         rowCount: 0,
-        mode: 'sql_rejected'
+        mode: 'chat'
       });
     }
 
-    console.log('Executing SQL:\n', sqlText);
+    console.log('Generated SQL:\n', sqlText);
 
+    // 4) Run SQL
     const rows = await runQuery(sqlText);
 
-    // 4) Turn data into business explanation
+    // 5) Turn rows into business answer (including forecasts if requested)
     const answer = await answerFromData(question, rows, {
       rowCount: rows.length,
       sql: sqlText
@@ -78,34 +77,34 @@ chatRouter.post('/', async (req, res) => {
     return res.json({
       answer,
       rowCount: rows.length,
-      mode: 'sql',
-      sql: sqlText
+      mode: 'sql'
     });
   } catch (err) {
-    // NEVER leak internal errors to user; always return a friendly chat answer
-    console.error('Chat endpoint internal error:', err);
+    console.error('Chat endpoint error:', err);
     console.error('Error stack:', err.stack);
 
+    // 6) Never show raw errors to the user — fall back to general chat help
     try {
-      const fallbackAnswer = await generalChatResponse(
-        'The system had an internal issue while handling this user question: ' +
-          question +
-          '. Respond in a friendly way and ask them to try again or narrow their query, without mentioning any technical errors or databases.',
+      const fallback = await generalChatResponse(
+        `User asked: "${question}". 
+There was an internal issue accessing or processing the data. 
+Ignore any technical details and instead provide a helpful, high-level explanation, 
+suggestions, or alternative ways the user can explore their sales and performance.`,
         history
       );
 
       return res.json({
-        answer: fallbackAnswer,
+        answer: fallback,
         rowCount: 0,
-        mode: 'error_fallback'
+        mode: 'chat'
       });
-    } catch (fallbackErr) {
-      console.error('Fallback chat error:', fallbackErr);
+    } catch (innerErr) {
+      console.error('Fallback chat error:', innerErr);
       return res.json({
         answer:
-          'Something went wrong while processing your request. Please try again with a slightly different or more specific question.',
+          'Sorry, I had trouble processing your request just now. Please try again in a moment or slightly rephrase your question.',
         rowCount: 0,
-        mode: 'error_fallback'
+        mode: 'chat'
       });
     }
   }
