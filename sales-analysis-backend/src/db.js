@@ -1,3 +1,4 @@
+// db.js
 import sql from 'mssql';
 
 // Validate required environment variables
@@ -31,8 +32,7 @@ let poolPromise;
 
 export function getPool() {
   validateConfig();
-  
-  // In serverless, create a new connection each time if pool is closed
+
   if (!poolPromise) {
     poolPromise = sql.connect(config).catch(err => {
       console.error('SQL Server connection error:', err);
@@ -67,5 +67,3 @@ export async function runQuery(query, params = {}) {
     throw new Error(`Query execution failed: ${err.message}`);
   }
 }
-
-
